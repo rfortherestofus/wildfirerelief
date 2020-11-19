@@ -1,0 +1,147 @@
+---
+title: "Wildfire Relief Data Visualization"
+site: distill::distill_website
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE,
+                      warning = FALSE,
+                      message = FALSE)
+```
+
+```{r load_packages}
+library(tidyverse)
+library(devtools)
+library(leaflet)
+library(sf)
+library(lubridate)
+library(tfff)
+
+load_all()
+```
+
+```{r load_data}
+
+
+wildfires_2020_at_largest_date <- wildfires_2020 %>% 
+  st_drop_geometry() %>% 
+  mutate(date = as_date(polygon_date_time)) %>% 
+  group_by(date) %>% 
+  summarize(total_acres = sum(gis_acres, na.rm = TRUE)) %>% 
+  drop_na(date) %>% 
+  slice_max(total_acres, n = 1) %>% 
+  pull(date)
+
+wildfires_2020_at_largest_single_day <- wildfires_2020 %>% 
+  mutate(date = as_date(polygon_date_time)) %>% 
+  filter(date == wildfires_2020_at_largest_date)
+
+wildfires_2020_at_largest <- wildfires_2020 %>% 
+  group_by(incident_name) %>% 
+  slice_max(gis_acres, n = 1, with_ties = FALSE) %>% 
+  ungroup() 
+```
+
+
+
+# Wildfires
+
+
+
+
+## Wildfires 2020
+
+```{r}
+leaflet() %>%
+  addProviderTiles(providers$CartoDB.Positron) %>%
+  addPolygons(data = wildfires_2020_at_largest,
+              color = "orange",
+              smoothFactor = 0.2,
+              fillOpacity = 1,
+              stroke = FALSE)
+```
+
+## Wildfires 2020 Compared to Previous Years
+
+# COVID
+
+```{r}
+pal <- colorNumeric(
+  palette = tinter::tinter(tfff_colors("Blue"),
+               steps = 5,
+               direction = "tints"),
+  domain = covid_data$cases_seven_day_avg)
+
+leaflet() %>%
+  addProviderTiles(providers$CartoDB.Positron) %>%
+  addPolygons(data = filter(covid_data, date == "2020-09-12"),
+              color = ~pal(cases_seven_day_avg),
+              smoothFactor = 0.2,
+              fillOpacity = 1,
+              stroke = 0.25)
+```
+
+
+# Rebuilding
+
+## Hospitals
+
+```{r}
+leaflet() %>%
+  addProviderTiles(providers$CartoDB.Positron) %>%
+  addCircleMarkers(data = hospitals,
+                   radius = ~sqrt(beds),
+                   popup = ~name)
+```
+
+
+## Clinics
+
+```{r}
+leaflet() %>%
+  addProviderTiles(providers$CartoDB.Positron) %>%
+  addCircleMarkers(data = clinics_california,
+                   popup = ~fac_name) %>% 
+  addCircleMarkers(data = hospitals,
+                   radius = ~sqrt(beds),
+                   popup = ~name)
+```
+
+
+# Combined Map
+
+```{r}
+leaflet() %>%
+  addProviderTiles(providers$CartoDB.Positron,
+                   group = "Base Map") %>%
+  addPolygons(data = wildfires_2020_at_largest,
+              group = "Wildfires",
+              color = tfff_colors("Orange"),
+              smoothFactor = 0.2,
+              fillOpacity = 1,
+              stroke = FALSE) %>% 
+  addPolygons(data = filter(covid_data, date == "2020-09-12"),
+              group = "COVID Cases",
+              color = ~pal(cases_seven_day_avg),
+              smoothFactor = 0.2,
+              fillOpacity = 1,
+              stroke = 0.25) %>% 
+  # TODO: Add different shapes for clinics vs hospitals
+  addCircles(data = clinics_california,
+             group = "Clinics",
+             color = tfff_colors("Dark Green"),
+             radius = 1000,
+             popup = ~fac_name) %>% 
+  addCircleMarkers(data = hospitals,
+                   group = "Hospitals",
+                   radius = ~sqrt(beds),
+                   color = tfff_colors("Dark Green"),
+                   popup = ~name) %>% 
+  addLayersControl(
+    overlayGroups = c("Wildfires", "Hospitals", "Clinics"),
+    baseGroups = c("Base Map", "COVID Cases"),
+    options = layersControlOptions(collapsed = FALSE,
+                                   autoZIndex = TRUE))
+```
+
+
