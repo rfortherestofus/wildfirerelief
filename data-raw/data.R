@@ -13,11 +13,14 @@ library(usethis)
 library(readxl)
 library(covdata)
 library(tidycensus)
+library(tfff)
+library(ggmap)
+
 
 
 # Oregon and Siskiyou Stuff ------------------------------------------
 
-oregon_siskiyou <- counties(cb = TRUE, class="sf") %>%
+oregon_siskiyou_geospatial <- counties(cb = TRUE, class="sf") %>%
   clean_names() %>%
   filter(statefp == "41" | statefp == "06") %>%
   filter(statefp == "41" | name == "Siskiyou") %>%
@@ -25,12 +28,22 @@ oregon_siskiyou <- counties(cb = TRUE, class="sf") %>%
   st_as_sf() %>%
   st_transform(crs = "WGS84")
 
-use_data(oregon_siskiyou,
+
+use_data(oregon_siskiyou_geospatial,
          overwrite = TRUE)
 
-oregon_siskiyou_population <- get_acs(geography = "county",
-                                      variables = "B01003_001",
-                                      state = c("OR", "CA")) %>%
+oregon_siskiyou_counties_geospatial <- counties(cb = TRUE, class="sf") %>%
+  clean_names() %>%
+  filter(statefp == "41" | statefp == "06") %>%
+  filter(statefp == "41" | name == "Siskiyou") %>%
+  select(name) %>%
+  rename(county = name)
+
+
+
+oregon_siskiyou_counties_population <- get_acs(geography = "county",
+                                               variables = "B01003_001",
+                                               state = c("OR", "CA")) %>%
   clean_names() %>%
   rename(county = name,
          population = estimate) %>%
@@ -40,12 +53,14 @@ oregon_siskiyou_population <- get_acs(geography = "county",
   select(county, population)
 
 
-oregon_siskiyou_counties <- counties(cb = TRUE, class="sf") %>%
-  clean_names() %>%
-  filter(statefp == "41" | statefp == "06") %>%
-  filter(statefp == "41" | name == "Siskiyou") %>%
-  select(name) %>%
-  rename(county = name)
+oregon_siskiyou_communities_geospatial <- oregon_california_communities_geospatial %>%
+  left_join(oregon_siskiyou_communities, by = c("community", "state")) %>%
+  # st_centroid() %>%
+  select(-contains("geoid"))
+
+use_data(oregon_siskiyou_communities_geospatial,
+         overwrite = TRUE)
+
 
 
 
@@ -164,13 +179,13 @@ covid_data <- nytcovcounty %>%
   filter(state == "Oregon" | county == "Siskiyou") %>%
   select(-fips) %>%
   arrange(county, state) %>%
-  left_join(oregon_siskiyou_population, by = "county") %>%
+  left_join(oregon_siskiyou_counties_population, by = "county") %>%
   mutate(cases_per_1000 = cases / (population / 1000)) %>%
   mutate(cases_seven_day_avg = slider::slide_dbl(cases_per_1000, mean,
                                                  .before = 7,
                                                  .after = 0,
                                                  na.rm = TRUE)) %>%
-  left_join(oregon_siskiyou_counties, by = "county") %>%
+  left_join(oregon_siskiyou_counties_geospatial, by = "county") %>%
   st_as_sf() %>%
   st_transform(crs = "WGS84")
 
@@ -187,10 +202,25 @@ hospitals <- st_read("https://opendata.arcgis.com/datasets/6ac5e325468c4cb9b905f
   mutate(beds = na_if(beds, "-999"))
 
 
-hospitals %>%
-  st_drop_geometry() %>%
-  view()
+use_data(hospitals,
+         overwrite = TRUE)
 
+
+# Distance from Communities to Hospital -----------------------------------
+
+route(from = "Portland, OR",
+      to = "Seattle, WA",
+      mode = "driving",
+      structure = "route")
+
+oregon_siskiyou_communities_geospatial %>%
+  st_centroid()
+
+from <- "houston, texas"
+to <- "waco, texas"
+route(from, to, structure = "legs")
+route(from, to, structure = "route")
+route(from, to, alternatives = TRUE)
 
 
 # Clinics -----------------------------------------------------------------

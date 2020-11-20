@@ -6,7 +6,9 @@ site: distill::distill_website
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE,
                       warning = FALSE,
-                      message = FALSE)
+                      message = FALSE,
+                      layout = "l-body-outset",
+                      fig.height = 6)
 ```
 
 ```{r load_packages}
@@ -21,8 +23,6 @@ load_all()
 ```
 
 ```{r load_data}
-
-
 wildfires_2020_at_largest_date <- wildfires_2020 %>% 
   st_drop_geometry() %>% 
   mutate(date = as_date(polygon_date_time)) %>% 
@@ -43,105 +43,172 @@ wildfires_2020_at_largest <- wildfires_2020 %>%
 ```
 
 
+```{r}
+map_basemap <- function() {
+  leaflet() %>%
+    addProviderTiles(providers$CartoDB.Positron)
+}
+```
+
 
 # Wildfires
 
-
-
-
 ## Wildfires 2020
 
+This map shows the wildfires at their largest point in 2020. 
+
 ```{r}
-leaflet() %>%
-  addProviderTiles(providers$CartoDB.Positron) %>%
-  addPolygons(data = wildfires_2020_at_largest,
-              color = "orange",
-              smoothFactor = 0.2,
-              fillOpacity = 1,
-              stroke = FALSE)
+map_wildfires <- function(leaflet_layers) {
+  leaflet_layers %>%
+    addPolygons(data = wildfires_2020_at_largest,
+                group = "Wildfires",
+                color = tfff_colors("Orange"),
+                smoothFactor = 0.2,
+                fillOpacity = 1,
+                stroke = FALSE) 
+}
+
+
+map_basemap() %>% 
+  map_wildfires()
+
 ```
 
 ## Wildfires 2020 Compared to Previous Years
 
+I'll add this later on.
+
 # COVID
 
-```{r}
-pal <- colorNumeric(
-  palette = tinter::tinter(tfff_colors("Blue"),
-               steps = 5,
-               direction = "tints"),
-  domain = covid_data$cases_seven_day_avg)
+## COVID Cases: September 1
 
-leaflet() %>%
-  addProviderTiles(providers$CartoDB.Positron) %>%
-  addPolygons(data = filter(covid_data, date == "2020-09-12"),
-              color = ~pal(cases_seven_day_avg),
-              smoothFactor = 0.2,
-              fillOpacity = 1,
-              stroke = 0.25)
+```{r}
+map_covid <- function(leaflet_layers, observation_date) {
+  
+  pretty_date <- stamp_date("March 1")(ymd(observation_date))
+  
+  group_name = str_glue("COVID Cases {pretty_date}")
+  
+  pal <- colorNumeric(
+    palette = tinter::tinter(tfff_colors("Blue"),
+                             steps = 5,
+                             direction = "tints"),
+    domain = covid_data$cases_seven_day_avg)
+  
+  leaflet_layers %>% 
+    addPolygons(data = filter(covid_data, date == observation_date),
+                group = group_name,
+                color = ~pal(cases_seven_day_avg),
+                smoothFactor = 0.2,
+                fillOpacity = 1,
+                stroke = 0.1) 
+}
+
+
+map_basemap() %>% 
+  map_covid("2020-09-01")  
 ```
 
+## COVID Cases: October 1
+
+```{r}
+map_basemap() %>% 
+  map_covid("2020-10-01")  
+```
+
+## COVID Cases: November 1
+
+```{r}
+map_basemap() %>% 
+  map_covid("2020-11-01")  
+```
+
+
+# Communities
+
+The yellow polygons show the borders of communities in Oregon and Siskiyou counties. 
+
+```{r}
+map_communities <- function(leaflet_layers) {
+  leaflet_layers %>% 
+    addPolygons(data = oregon_siskiyou_communities_geospatial,
+                group = "Communities",
+                color = tfff_colors("Yellow"),
+                fillOpacity = 1,
+                popup = ~community)
+}
+
+map_basemap() %>% 
+  map_communities()
+```
+
+
+## Percent of Mobile Housing
+
+Coming soon
+
+## Distance from Communities to Nearest Hospital
+
+Coming soon
 
 # Rebuilding
 
 ## Hospitals
 
+This shows hospitals in Oregon and Siskiyou.
+
 ```{r}
-leaflet() %>%
-  addProviderTiles(providers$CartoDB.Positron) %>%
-  addCircleMarkers(data = hospitals,
-                   radius = ~sqrt(beds),
-                   popup = ~name)
+map_hospitals <- function(leaflet_layers) {
+  
+  hospital_icon <- icons(
+    iconUrl = here::here("inst", "resources", "images", "588-hospital.svg"),
+    iconWidth = 22
+  )
+  
+  leaflet_layers %>% 
+    addMarkers(data = hospitals,
+               group = "Hospitals",
+               icon = hospital_icon,
+               popup = ~name) 
+}
+
+map_basemap() %>% 
+  map_hospitals()
 ```
+
 
 
 ## Clinics
 
+At this point, I only have data for clinics from California. If you know of any source for Oregon data, please let me know. I've done some searching and haven't turned up anything.
+
 ```{r}
-leaflet() %>%
-  addProviderTiles(providers$CartoDB.Positron) %>%
+map_basemap() %>% 
   addCircleMarkers(data = clinics_california,
-                   popup = ~fac_name) %>% 
-  addCircleMarkers(data = hospitals,
-                   radius = ~sqrt(beds),
-                   popup = ~name)
+                   popup = ~fac_name) 
 ```
 
 
 # Combined Map
 
+This map shows all of the above maps in a single map, with the ability to filter out certain layers.
+
 ```{r}
-leaflet() %>%
-  addProviderTiles(providers$CartoDB.Positron,
-                   group = "Base Map") %>%
-  addPolygons(data = wildfires_2020_at_largest,
-              group = "Wildfires",
-              color = tfff_colors("Orange"),
-              smoothFactor = 0.2,
-              fillOpacity = 1,
-              stroke = FALSE) %>% 
-  addPolygons(data = filter(covid_data, date == "2020-09-12"),
-              group = "COVID Cases",
-              color = ~pal(cases_seven_day_avg),
-              smoothFactor = 0.2,
-              fillOpacity = 1,
-              stroke = 0.25) %>% 
-  # TODO: Add different shapes for clinics vs hospitals
-  addCircles(data = clinics_california,
-             group = "Clinics",
-             color = tfff_colors("Dark Green"),
-             radius = 1000,
-             popup = ~fac_name) %>% 
-  addCircleMarkers(data = hospitals,
-                   group = "Hospitals",
-                   radius = ~sqrt(beds),
-                   color = tfff_colors("Dark Green"),
-                   popup = ~name) %>% 
+map_basemap() %>% 
+  map_wildfires() %>% 
+  map_covid("2020-09-01") %>% 
+  map_covid("2020-10-01") %>% 
+  map_covid("2020-11-01") %>% 
+  map_communities() %>% 
+  map_hospitals() %>% 
   addLayersControl(
-    overlayGroups = c("Wildfires", "Hospitals", "Clinics"),
-    baseGroups = c("Base Map", "COVID Cases"),
+    overlayGroups = c("Wildfires", "Hospitals", "Communities"),
+    baseGroups = c("Don't Show COVID Cases", 
+                   "COVID Cases September 1",
+                   "COVID Cases October 1",
+                   "COVID Cases November 1"),
     options = layersControlOptions(collapsed = FALSE,
-                                   autoZIndex = TRUE))
+                                   autoZIndex = FALSE))
 ```
 
 
