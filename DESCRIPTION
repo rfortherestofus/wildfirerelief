@@ -12,3 +12,5 @@ LazyData: true
 Depends: 
     R (>= 2.10)
 RoxygenNote: 7.1.1
+URL: https://github.com/rfortherestofus/wildfirerelief
+BugReports: https://github.com/rfortherestofus/wildfirerelief/issues
