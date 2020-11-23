@@ -1,6 +1,8 @@
 ---
 title: "Wildfire Relief Data Visualization"
-site: distill::distill_website
+output:
+  distill::distill_article:
+    toc: FALSE
 ---
 
 ```{r setup, include=FALSE}
@@ -64,7 +66,7 @@ map_wildfires <- function(leaflet_layers) {
                 group = "Wildfires",
                 color = tfff_colors("Orange"),
                 smoothFactor = 0.2,
-                fillOpacity = 1,
+                fillOpacity = 0.9,
                 stroke = FALSE) 
 }
 
@@ -80,14 +82,17 @@ I'll add this later on.
 
 # COVID
 
+Darker blue = more cases per capita
+
 ## COVID Cases: September 1
 
 ```{r}
-map_covid <- function(leaflet_layers, observation_date) {
+map_covid <- function(leaflet_layers, 
+                      observation_date,
+                      group_name = NULL) {
   
-  pretty_date <- stamp_date("March 1")(ymd(observation_date))
-  
-  group_name = str_glue("COVID Cases {pretty_date}")
+  # pretty_date <- stamp_date("Mar 1")(ymd(observation_date))
+
   
   pal <- colorNumeric(
     palette = tinter::tinter(tfff_colors("Blue"),
@@ -100,14 +105,16 @@ map_covid <- function(leaflet_layers, observation_date) {
                 group = group_name,
                 color = ~pal(cases_seven_day_avg),
                 smoothFactor = 0.2,
-                fillOpacity = 1,
+                fillOpacity = 0.5,
                 stroke = 0.1) 
 }
+```
 
-
+```{r}
 map_basemap() %>% 
   map_covid("2020-09-01")  
 ```
+
 
 ## COVID Cases: October 1
 
@@ -134,7 +141,7 @@ map_communities <- function(leaflet_layers) {
     addPolygons(data = oregon_siskiyou_communities_geospatial,
                 group = "Communities",
                 color = tfff_colors("Yellow"),
-                fillOpacity = 1,
+                fillOpacity = 0.9,
                 popup = ~community)
 }
 
@@ -155,7 +162,7 @@ Coming soon
 
 ## Hospitals
 
-This shows hospitals in Oregon and Siskiyou.
+This shows hospitals in Oregon and Siskiyou. For some reason, they're not showing up, but they do show up in the combined map below
 
 ```{r}
 map_hospitals <- function(leaflet_layers) {
@@ -183,32 +190,27 @@ map_basemap() %>%
 At this point, I only have data for clinics from California. If you know of any source for Oregon data, please let me know. I've done some searching and haven't turned up anything.
 
 ```{r}
-map_basemap() %>% 
-  addCircleMarkers(data = clinics_california,
-                   popup = ~fac_name) 
+# map_basemap() %>% 
+#   addCircleMarkers(data = clinics_california,
+#                    popup = ~fac_name) 
 ```
 
 
 # Combined Map
 
-This map shows all of the above maps in a single map, with the ability to filter out certain layers.
+This map shows all of the above maps in a single map, with the ability to filter out certain layers. FYI, the COVID cases are for November 1.
 
 ```{r}
 map_basemap() %>% 
   map_wildfires() %>% 
-  map_covid("2020-09-01") %>% 
-  map_covid("2020-10-01") %>% 
-  map_covid("2020-11-01") %>% 
+  map_covid("2020-11-01",
+            group_name = "COVID Cases") %>%
   map_communities() %>% 
   map_hospitals() %>% 
   addLayersControl(
-    overlayGroups = c("Wildfires", "Hospitals", "Communities"),
-    baseGroups = c("Don't Show COVID Cases", 
-                   "COVID Cases September 1",
-                   "COVID Cases October 1",
-                   "COVID Cases November 1"),
+    overlayGroups = c("Wildfires", "Hospitals", "Communities", "COVID Cases"),
     options = layersControlOptions(collapsed = FALSE,
-                                   autoZIndex = FALSE))
+                                   autoZIndex = FALSE)) 
 ```
 
 
