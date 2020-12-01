@@ -15,6 +15,10 @@ library(covdata)
 library(tidycensus)
 library(tfff)
 library(ggmap)
+library(fuzzyjoin)
+library(scales)
+
+
 
 
 
@@ -195,11 +199,70 @@ use_data(covid_data,
 
 # Hospitals ---------------------------------------------------------------
 
+
+
+# Get data on rural hospitals
+# Source: https://www.ohsu.edu/media/966
+# Made some minor changes to names so they would match
+
+rural_hospitals <- c(
+  "Columbia Memorial Hospital",
+  "Providence Seaside Hospital",
+  "Adventist Health Tillamook",
+  "Samaritan North Lincoln Hospital",
+  "Samaritan Pacific Communities Hospital",
+  "Good Samaritan Regional Medical Center",
+  "Peace Harbor Hospital",
+  "Bay Area Hospital",
+  "Coquile Valley Hospital District",
+  "Southern Coos Hospital & Health Center",
+  "Curry General Hospital",
+  "Asante Three Rivers Medical Center",
+  "Mercy Medical Center",
+  "PeaceHealth Cottage Grove Community Hospital",
+  "Samaritan Lebanon Community Hospital",
+  "Santiam Hospital",
+  "Legacy Silverton Hospital",
+  "West Valley Hospital",
+  "Providence Newberg Medical Center",
+  "Providence Hood River Memorial Hospital",
+  "Mid-Columbia Medical Center",
+  "St Charles Madras",
+  "St Charles Medical Center Redmond",
+  "St Charles Medical Center Bend",
+  "St Charles Prineville",
+  "Pioneer Memorial Hospital",
+  "Good Shepherd Medical Center",
+  "St Anthony Hospital",
+  "Blue Mountain Hospital",
+  "Harney District Hospital",
+  "Lake District Hospital",
+  "Sky Lakes Medical Center",
+  "Asante Ashland Community Hospital",
+  "Saint Alphonsus Medical Center - Ontario",
+  "Saint Alphonsus Medical Center - Baker City, Inc",
+  "Grande Ronde Hospital",
+  "Wallowa Memorial Hospital"
+) %>%
+  tibble() %>%
+  set_names("name")
+
+
 hospitals <- st_read("https://opendata.arcgis.com/datasets/6ac5e325468c4cb9b905f1728d6fbf0f_0.geojson") %>%
   clean_names() %>%
   st_transform(crs = "WGS84") %>%
-  st_filter(oregon_siskiyou, join = st_intersects) %>%
-  mutate(beds = na_if(beds, "-999"))
+  st_filter(oregon_siskiyou_geospatial, join = st_intersects) %>%
+  mutate(beds = na_if(beds, "-999")) %>%
+  stringdist_full_join(rural_hospitals,
+                       ignore_case = TRUE,
+                       max_dist = 2) %>%
+  rename(name = name.x,
+         rural_hospital = name.y) %>%
+  mutate(rural_hospital = case_when(
+    is.na(rural_hospital) ~ "Not Rural",
+    TRUE ~ "Rural"
+  ))
+
 
 
 use_data(hospitals,
@@ -208,20 +271,56 @@ use_data(hospitals,
 
 # Distance from Communities to Hospital -----------------------------------
 
-route(from = "Portland, OR",
-      to = "Seattle, WA",
-      mode = "driving",
-      structure = "route")
 
-oregon_siskiyou_communities_geospatial %>%
-  st_centroid()
+# This function returns the time in minutes from one community to one hospital
 
-from <- "houston, texas"
-to <- "waco, texas"
-route(from, to, structure = "legs")
-route(from, to, structure = "route")
-route(from, to, alternatives = TRUE)
+get_time_to_hospital <- function(community_name, hospital_id) {
 
+  community_single <- oregon_siskiyou_communities %>%
+    filter(community == community_name) %>%
+    mutate(community = str_glue("{community}, {state}")) %>%
+    select(community) %>%
+    pull(community)
+
+  hospital_single <- hospitals %>%
+    filter(id == hospital_id) %>%
+    mutate(hospital_location = str_glue("{address} {city}, {state} {zip}")) %>%
+    select(name, hospital_location)
+
+  route(from = community_single,
+        to = hospital_single$hospital_location,
+        mode = "driving",
+        output = "simple",
+        structure = "route") %>%
+    summarize(minutes_to_hospital = sum(minutes,
+                                        na.rm = TRUE)) %>%
+    mutate(community = community_single) %>%
+    mutate(hospital = hospital_single$name) %>%
+    mutate(hospital_id = hospital_id) %>%
+    select(community, hospital, hospital_id, minutes_to_hospital)
+}
+
+# This function calculates the time from a single community to all hospitals
+# Then it keeps only the closest hospital
+
+get_closest_hospital_for_single_community <- function(community) {
+  map2_df(community,
+          hospitals$id,
+          get_time_to_hospital) %>%
+    slice_min(minutes_to_hospital,
+              n = 1) %>%
+    rename(closest_hospital = hospital)
+}
+
+# Then we map across all communities in order to get the closest hospital for each community
+
+closest_hospitals <- map_df(oregon_siskiyou_communities$community,
+                            get_closest_hospital_for_single_community)
+
+use_data(closest_hospitals,
+         overwrite = TRUE)
+
+closest_hospitals
 
 # Clinics -----------------------------------------------------------------
 
@@ -260,6 +359,33 @@ clinics_california <- bind_rows(clinics_responders_california,
            crs = "WGS84")
 
 use_data(clinics_california,
+         overwrite = TRUE)
+
+
+
+# Mobile Housing ----------------------------------------------------------
+
+mobile_housing <- get_acs(geography = "place",
+                          state = c("OR", "CA"),
+                          geometry = TRUE,
+                          output = "wide",
+                          variables = c(mobile_homes = "B25024_010",
+                                        total_units = "B25024_001")) %>%
+  clean_names() %>%
+  rename(community = name) %>%
+  st_transform(crs = "WGS84") %>%
+  st_filter(oregon_siskiyou, join = st_intersects) %>%
+  mutate(community = str_remove(community, " city, Oregon")) %>%
+  mutate(community = str_remove(community, " CDP, Oregon")) %>%
+  mutate(community = str_remove(community, " town, Oregon")) %>%
+  mutate(community = str_remove(community, " city, California")) %>%
+  mutate(community = str_remove(community, " CDP, California")) %>%
+  mutate(community = str_remove(community, " town, California")) %>%
+  mutate(pct_mobile_homes = mobile_homes_e / total_units_e) %>%
+  select(geoid, community, pct_mobile_homes)
+
+
+use_data(mobile_housing,
          overwrite = TRUE)
 
 

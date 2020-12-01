@@ -48,7 +48,8 @@ wildfires_2020_at_largest <- wildfires_2020 %>%
 ```{r}
 map_basemap <- function() {
   leaflet() %>%
-    addProviderTiles(providers$CartoDB.Positron)
+    addProviderTiles(providers$CartoDB.Positron) %>% 
+  setView(lng = -120.28940551789255, lat = 43.829711619763955, zoom = 6)
 }
 ```
 
@@ -91,8 +92,6 @@ map_covid <- function(leaflet_layers,
                       observation_date,
                       group_name = NULL) {
   
-  # pretty_date <- stamp_date("Mar 1")(ymd(observation_date))
-
   
   pal <- colorNumeric(
     palette = tinter::tinter(tfff_colors("Blue"),
@@ -142,6 +141,7 @@ map_communities <- function(leaflet_layers) {
                 group = "Communities",
                 color = tfff_colors("Yellow"),
                 fillOpacity = 0.9,
+                stroke = FALSE,
                 popup = ~community)
 }
 
@@ -152,31 +152,112 @@ map_basemap() %>%
 
 ## Percent of Mobile Housing
 
-Coming soon
+This shows basically the same thing (i.e. yellow = community boundaries), but darker yellow indicates a higher percentage of units that are mobile housing. I broke the communities into thirds so the darkest yellow is the top third of communities, middle third is a medium yellow, bottom third (i.e. lowest percentage of mobile homes) is the lightest yellow. Click on any community to see the percentage of mobile homes.
+
+```{r}
+tfff_yellows <- tinter::tinter(tfff_colors("Yellow"),
+                             steps = 3,
+                             direction = "tints")
+
+
+
+
+map_mobile_housing <- function(leaflet_layers) {
+  
+  mobile_housing <- mobile_housing %>% 
+    mutate(quartile = ntile(pct_mobile_homes, 3)) %>% 
+  mutate(fill_color = case_when(
+    quartile == 1 ~ tfff_yellows[1],
+    quartile == 2 ~ tfff_yellows[2],
+    quartile == 3 ~ tfff_yellows[3]
+  )) %>% 
+    mutate(label = str_glue("<b>{community}</b><br>{(percent(pct_mobile_homes, 1))} of units are mobile homes"))
+  
+  
+  leaflet_layers %>% 
+    addPolygons(data = mobile_housing,
+                group = "Mobile Housing",
+                color = ~fill_color,
+                fillOpacity = 0.9,
+                stroke = FALSE,
+                popup = ~label)
+}
+
+map_basemap() %>% 
+  map_mobile_housing()
+```
+
 
 ## Distance from Communities to Nearest Hospital
 
-Coming soon
+I calculated the distance from the center of each community to the closest hospital. Then, I plotted each community on the map using the same yellow color scheme from mobile housing (i.e. break communities into thirds, darker yellow = farther from hospital). These times are approximate as we can't calculate this for every address in every community, but it gives a good overall sense. 
+
+```{r}
+
+
+map_closest_hospital <- function(leaflet_layers) {
+  
+ 
+ closest_hospitals_geospatial <- closest_hospitals %>% 
+  separate(community, 
+           into = c("community", "state"),
+           sep = ", ") %>% 
+  left_join(oregon_siskiyou_communities_geospatial) %>% 
+  mutate(quartile = ntile(minutes_to_hospital, 3)) %>% 
+  mutate(fill_color = case_when(
+    quartile == 1 ~ tfff_yellows[1],
+    quartile == 2 ~ tfff_yellows[2],
+    quartile == 3 ~ tfff_yellows[3]
+  )) %>% 
+   mutate(label = str_glue("<b>{community}</b><br>{number(minutes_to_hospital, 1)} minutes to closest hospital")) %>% 
+  st_as_sf()
+
+  
+  leaflet_layers %>% 
+    addPolygons(data = closest_hospitals_geospatial,
+                group = "Distance to Nearest Hospital",
+                color = ~fill_color,
+                fillOpacity = 0.9,
+                stroke = FALSE,
+                popup = ~label)
+}
+
+map_basemap() %>% 
+  map_closest_hospital()
+```
+
 
 # Rebuilding
 
 ## Hospitals
 
-This shows hospitals in Oregon and Siskiyou. For some reason, they're not showing up, but they do show up in the combined map below
+This shows hospitals in Oregon and Siskiyou. The darker green shows rural hospitals, as taken from the [Oregon Office of Rural Health](https://www.ohsu.edu/media/966) (while Siskiyou hospitals are likely rural as well, I don't have data from California to classify them).
 
 ```{r}
 map_hospitals <- function(leaflet_layers) {
   
-  hospital_icon <- icons(
-    iconUrl = here::here("inst", "resources", "images", "588-hospital.svg"),
-    iconWidth = 22
+  hospitals <- hospitals %>% 
+    mutate(color_for_marker = case_when(
+      rural_hospital == "Rural" ~ "green",
+      TRUE ~ "darkgreen"
+    )) %>% 
+    mutate(icon_color = case_when(
+      rural_hospital == "Rural" ~ "black",
+      TRUE ~ "#ffffff"
+    ))
+  
+  hospital_icon <- awesomeIcons(
+    icon = 'h-square',
+    iconColor = 'black',
+    library = 'fa',
+    markerColor = hospitals$color_for_marker
   )
   
   leaflet_layers %>% 
-    addMarkers(data = hospitals,
-               group = "Hospitals",
-               icon = hospital_icon,
-               popup = ~name) 
+    addAwesomeMarkers(data = hospitals,
+                      group = "Hospitals",
+                      icon = hospital_icon,
+                      popup = ~name) 
 }
 
 map_basemap() %>% 
@@ -198,19 +279,29 @@ At this point, I only have data for clinics from California. If you know of any 
 
 # Combined Map
 
-This map shows all of the above maps in a single map, with the ability to filter out certain layers. FYI, the COVID cases are for November 1.
+This map shows all of the above maps in a single map, with the ability to filter out certain layers. The community-level layers (communities, mobile housing, and distance to nearest hospital) overlap so if you want to see those, you'll want to just select one. 
+
+
 
 ```{r}
 map_basemap() %>% 
   map_wildfires() %>% 
   map_covid("2020-11-01",
-            group_name = "COVID Cases") %>%
+            group_name = "COVID Cases (November 1)") %>%
   map_communities() %>% 
   map_hospitals() %>% 
+  map_mobile_housing() %>% 
+  map_closest_hospital() %>% 
+  # hideGroup("Mobile Housing") %>% 
   addLayersControl(
-    overlayGroups = c("Wildfires", "Hospitals", "Communities", "COVID Cases"),
+    overlayGroups = c("Wildfires", 
+                      "Hospitals", 
+                      "Communities", 
+                      "Mobile Housing",
+                      "Distance to Nearest Hospital",
+                      "COVID Cases (November 1)"),
     options = layersControlOptions(collapsed = FALSE,
-                                   autoZIndex = FALSE)) 
+                                   autoZIndex = FALSE))
 ```
 
 
