@@ -188,9 +188,9 @@ map_basemap() %>%
 ```
 
 
-## Distance from Communities to Nearest Hospital
+## Time from Communities to Nearest Hospital
 
-I calculated the distance from the center of each community to the closest hospital. Then, I plotted each community on the map using the same yellow color scheme from mobile housing (i.e. break communities into thirds, darker yellow = farther from hospital). These times are approximate as we can't calculate this for every address in every community, but it gives a good overall sense. 
+I calculated the driving time from the center of each community to the closest hospital. Then, I plotted each community on the map using the same yellow color scheme from mobile housing (i.e. break communities into thirds, darker yellow = farther from hospital). These times are approximate as we can't calculate this for every address in every community, but it gives a good overall sense. 
 
 ```{r}
 
