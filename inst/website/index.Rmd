@@ -188,7 +188,7 @@ map_basemap() %>%
 ```
 
 
-## Time from Communities to Nearest Hospital
+## Driving Time to Nearest Hospital
 
 I calculated the driving time from the center of each community to the closest hospital. Then, I plotted each community on the map using the same yellow color scheme from mobile housing (i.e. break communities into thirds, darker yellow = farther from hospital). These times are approximate as we can't calculate this for every address in every community, but it gives a good overall sense. 
 
@@ -215,7 +215,7 @@ map_closest_hospital <- function(leaflet_layers) {
   
   leaflet_layers %>% 
     addPolygons(data = closest_hospitals_geospatial,
-                group = "Distance to Nearest Hospital",
+                group = "Driving Time to Nearest Hospital",
                 color = ~fill_color,
                 fillOpacity = 0.9,
                 stroke = FALSE,
@@ -298,7 +298,7 @@ map_basemap() %>%
                       "Hospitals", 
                       "Communities", 
                       "Mobile Housing",
-                      "Distance to Nearest Hospital",
+                      "Driving Time to Nearest Hospital",
                       "COVID Cases (November 1)"),
     options = layersControlOptions(collapsed = FALSE,
                                    autoZIndex = FALSE))
